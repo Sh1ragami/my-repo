@@ -1,0 +1,76 @@
+---
+name: Workflows quality gate
+run-name: Workflows quality gate
+
+on:  # yamllint: disable-line rule:truthy
+  push:
+    paths:
+      - ".github/workflows/*"
+  pull_request:
+    paths:
+      - ".github/workflows/*"
+  workflow_dispatch:
+
+concurrency:
+  group: workflows-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install actionlint
+        run: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) latest /usr/local/bin
+      - name: Run actionlint
+        shell: bash
+        run: |
+          set -eo pipefail
+          shopt -s nullglob
+          files=(.github/workflows/*.yml .github/workflows/*.yaml)
+          if (( ${#files[@]} == 0 )); then
+            echo "No workflow files."
+            exit 0
+          fi
+          actionlint "${files[@]}"
+
+  yamllint:
+    name: yamllint (GA-optimized)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install yamllint
+        run: python3 -m pip install --user yamllint
+      - name: Run yamllint for .yml & .yaml
+        shell: bash
+        run: |
+          set -eo pipefail
+          shopt -s nullglob
+          files=(.github/workflows/*.yml .github/workflows/*.yaml)
+          if (( ${#files[@]} == 0 )); then
+            echo "No workflow files."
+            exit 0
+          fi
+          # 警告も失敗扱いにしたい場合は -s を付与
+          python3 -m yamllint -f github -c .yamllint "${files[@]}"
+
+  # ※ 将来的に拡張子を .yml に統一したい場合は、下のジョブを有効化すると .yaml が残っているPRを落とせます。
+  # check-filenames:
+  #   name: Enforce .yml (no .yaml allowed)
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Fail if any .yaml exist
+  #       shell: bash
+  #       run: |
+  #         set -eo pipefail
+  #         shopt -s nullglob
+  #         yamls=(.github/workflows/*.yaml)
+  #         if (( ${#yamls[@]} > 0 )); then
+  #           echo "::group::.yaml found; please rename to .yml"
+  #           printf '::error file=%s,title=Invalid Extension::.yaml must be .yml\n' "${yamls[@]}"
+  #           echo "::endgroup::"
+  #           exit 1
+  #         fi
+  #         echo "All good: only .yml files."
