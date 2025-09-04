@@ -1,0 +1,13 @@
+name: Both uses and run
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths:
+      - ".github/workflows/*"
+
+jobs:
+  bad:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wrong step
+        uses: actions/checkout@v4
+        run: echo "this should not be here"

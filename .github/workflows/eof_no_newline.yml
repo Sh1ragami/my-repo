@@ -1,0 +1,11 @@
+name: EOF no newline
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths:
+      - ".github/workflows/*"
+
+jobs:
+  eof:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "no newline at EOF expected"
