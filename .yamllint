@@ -1,0 +1,19 @@
+---
+extends: default
+
+rules:
+  # GitHub Actions は先頭 '---' を書かない運用が多い
+  document-start: disable
+
+  # 'on:' キーでの誤検知を回避（値の真偽は true/false を推奨）
+  truthy:
+    check-keys: false
+    allowed-values: ['true', 'false']
+
+  # まずは 200 に緩和（4ファイルのみ該当）
+  line-length:
+    max: 200
+    allow-non-breakable-words: true
+
+  # 末尾改行は維持（既に全ファイルOK）
+  new-line-at-end-of-file: enable

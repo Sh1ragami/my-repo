@@ -1,0 +1,11 @@
+name: OK basic
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths:
+      - ".github/workflows/*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "hello world"

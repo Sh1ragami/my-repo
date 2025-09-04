@@ -1,0 +1,98 @@
+name: GitHub Actions Workflow Linter
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+concurrency:
+  group: workflows-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-filenames:
+    name: Enforce .yaml (no .yml allowed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for .yml files (warn only)
+        shell: bash
+        run: |
+          set -eo pipefail
+          mapfile -t ymls < <(find .github/workflows -type f -name "*.yml" | sort || true)
+          if (( ${#ymls[@]} > 0 )); then
+            echo "::group::Found .yml files (please rename to .yaml)"
+            for file in "${ymls[@]}"; do
+              printf '::warning file=%s,title=Invalid Extension::The file "%s" should be renamed to ".yaml".\n' "$file" "$file"
+            done
+            echo "::endgroup::"
+          else
+            echo "All good: only .yaml files are present."
+          fi
+
+  actionlint:
+    name: actionlint (PR review, added lines only)
+    runs-on: ubuntu-latest
+    needs: check-filenames
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck (optional)
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -y -qq install shellcheck
+      - name: Run actionlint via reviewdog
+        uses: reviewdog/action-actionlint@v1
+        env:
+          SHELLCHECK_OPTS: -S error
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          level: error
+          filter_mode: added
+          fail_level: error
+
+  actionlint-fullscan:
+    name: actionlint (full scan on demand)
+    runs-on: ubuntu-latest
+    needs: check-filenames
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -y -qq install shellcheck
+      - name: Run actionlint via reviewdog (full scan)
+        uses: reviewdog/action-actionlint@v1
+        env:
+          SHELLCHECK_OPTS: -S error
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-check
+          level: error
+          filter_mode: nofilter
+          fail_level: error
+
+  # yamllint:
+  #   name: yamllint (workflows)
+  #   runs-on: ubuntu-latest
+  #   needs: check-filenames
+  #   timeout-minutes: 5
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Run yamllint (use .github/workflows/yamllint.yaml)
+  #       uses: ibiqlik/action-yamllint@v3
+  #       with:
+  #         config_file: ".github/workflows/yamllint.yaml"
+  #         file_or_dir: ".github/workflows"
+  #         format: github
+  #         strict: true

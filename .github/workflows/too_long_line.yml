@@ -1,0 +1,11 @@
+name: Too long line
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths:
+      - ".github/workflows/*"
+
+jobs:
+  long:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "This line is intentionally made extremely, absurdly, unreasonably, spectacularly long to trigger the yamllint line-length rule which we configured to 200 characters, so this should clearly exceed that threshold and produce a lint error for demonstration purposes in CI."
