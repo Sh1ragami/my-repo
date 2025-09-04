@@ -14,38 +14,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 1) .yaml を検出したら失敗（.yml へ統一）
   check-filenames:
-    name: Enforce .yaml (no .yml allowed)
+    name: Enforce .yml (no .yaml allowed)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fail if any .yml files exist under .github/workflows
+      - name: Fail if any .yaml files exist under .github/workflows
         shell: bash
         run: |
           set -eo pipefail
-          mapfile -t ymls < <(find .github/workflows -type f -name "*.yml" | sort || true)
-          
-          if (( ${#ymls[@]} > 0 )); then
-            echo "::group::Found .yml files that must be renamed to .yaml"
-            
-            for file in "${ymls[@]}"; do
-              echo "::error file=${file},title=Invalid Extension::The file '${file}' must be renamed to '.yaml'."
+          mapfile -t yamls < <(find .github/workflows -type f -name "*.yaml" | sort || true)
+
+          if (( ${#yamls[@]} > 0 )); then
+            echo "::group::Found .yaml files that must be renamed to .yml"
+            for file in "${yamls[@]}"; do
+              echo "::error file=${file},title=Invalid Extension::The file '${file}' must be renamed to '.yml'."
             done
-            
             echo "::endgroup::"
+            echo "Example:"
+            echo "  git mv .github/workflows/workflow.yaml .github/workflows/workflow.yml"
             exit 1
           fi
-          
-          echo "All good: only .yaml files are present."
 
+          echo "✅ All good: only .yml files are present."
+
+  # 2) GitHub Actions 専用 lint
   actionlint:
     name: actionlint
     runs-on: ubuntu-latest
     needs: check-filenames
     steps:
       - uses: actions/checkout@v4
-
       - name: Run actionlint via reviewdog
         uses: reviewdog/action-actionlint@v1
         with:
@@ -54,15 +55,23 @@ jobs:
           level: error
           filter_mode: file
 
+  # 3) YAML 構文/スタイル lint（.yml のみ対象）
   yamllint:
     name: yamllint (workflows)
     runs-on: ubuntu-latest
     needs: check-filenames
     steps:
       - uses: actions/checkout@v4
-      - name: Run yamllint
-        uses: ibiqlik/action-yamllint@v3
-        with:
-          format: github
-          strict: true
-          file_or_dir: ".github/workflows"
+      - name: Install yamllint
+        run: python3 -m pip install --user yamllint
+      - name: Run yamllint for .yml files only
+        shell: bash
+        run: |
+          set -eo pipefail
+          shopt -s nullglob
+          files=(.github/workflows/*.yml)
+          if (( ${#files[@]} == 0 )); then
+            echo "No .yml files under .github/workflows."
+            exit 0
+          fi
+          python3 -m yamllint -f github -s "${files[@]}"
