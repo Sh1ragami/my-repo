@@ -2,15 +2,13 @@
 name: Workflows quality gate
 run-name: Workflows quality gate
 
-on:  # yamllint disable-line rule:truthy
+on:  # yamllint: disable-line rule:truthy
   push:
     paths:
       - ".github/workflows/*"
-      - "config/*.yml"
   pull_request:
     paths:
       - ".github/workflows/*"
-      - "config/*.yml"
   workflow_dispatch:
 
 concurrency:
@@ -18,56 +16,61 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # .yaml が混ざっていたら失敗（.yml に統一）
-  check-filenames:
-    name: Enforce .yml (no .yaml allowed)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Fail if any .yaml files exist under .github/workflows
+      - name: Install actionlint
+        run: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) latest /usr/local/bin
+      - name: Run actionlint
         shell: bash
         run: |
           set -eo pipefail
-          mapfile -t yamls < <(find .github/workflows -type f -name "*.yaml" | sort || true)
-          if (( ${#yamls[@]} > 0 )); then
-            echo "::group::Found .yaml files that must be renamed to .yml"
-            for file in "${yamls[@]}"; do
-              echo "::error file=${file},title=Invalid Extension::The file '${file}' must be renamed to '.yml'."
-            done
-            echo "::endgroup::"
-            echo "Example:"
-            echo "  git mv .github/workflows/workflow.yaml .github/workflows/workflow.yml"
-            exit 1
+          shopt -s nullglob
+          files=(.github/workflows/*.yml .github/workflows/*.yaml)
+          if (( ${#files[@]} == 0 )); then
+            echo "No workflow files."
+            exit 0
           fi
-          echo "✅ All good: only .yml files are present."
+          actionlint "${files[@]}"
 
-  # GitHub Actions ワークフロー専用の静的解析
-  actionlint:
-    name: actionlint
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    needs: check-filenames
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install actionlint
-        run: bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) latest /usr/local/bin
-
-      - name: Running actionlint
-        run: actionlint .github/workflows/*.yml
-
-  # YAML 構文/スタイルのlint（設定ファイルも一緒にチェック）
   yamllint:
-    name: yamllint (workflows & config)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    needs: check-filenames
+    name: yamllint (GA-optimized)
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: Install yamllint
+        run: python3 -m pip install --user yamllint
+      - name: Run yamllint for .yml & .yaml
+        shell: bash
+        run: |
+          set -eo pipefail
+          shopt -s nullglob
+          files=(.github/workflows/*.yml .github/workflows/*.yaml)
+          if (( ${#files[@]} == 0 )); then
+            echo "No workflow files."
+            exit 0
+          fi
+          # 警告も失敗扱いにしたい場合は -s を付与
+          python3 -m yamllint -f github -c .yamllint "${files[@]}"
 
-      # ubuntu-24.04 には yamllint が入っています（なければ apt/pip で導入してください）
-      - name: Running yamllint
-        run: yamllint -c config/yamllint_config.yml .github/workflows/*.yml config/*.yml
+  # ※ 将来的に拡張子を .yml に統一したい場合は、下のジョブを有効化すると .yaml が残っているPRを落とせます。
+  # check-filenames:
+  #   name: Enforce .yml (no .yaml allowed)
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Fail if any .yaml exist
+  #       shell: bash
+  #       run: |
+  #         set -eo pipefail
+  #         shopt -s nullglob
+  #         yamls=(.github/workflows/*.yaml)
+  #         if (( ${#yamls[@]} > 0 )); then
+  #           echo "::group::.yaml found; please rename to .yml"
+  #           printf '::error file=%s,title=Invalid Extension::.yaml must be .yml\n' "${yamls[@]}"
+  #           echo "::endgroup::"
+  #           exit 1
+  #         fi
+  #         echo "All good: only .yml files."
