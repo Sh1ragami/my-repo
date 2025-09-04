@@ -1,12 +1,16 @@
+---
 name: Workflows quality gate
+run-name: Workflows quality gate
 
-on:
+on:  # yamllint disable-line rule:truthy
   push:
     paths:
       - ".github/workflows/*"
+      - "config/*.yml"
   pull_request:
     paths:
       - ".github/workflows/*"
+      - "config/*.yml"
   workflow_dispatch:
 
 concurrency:
@@ -14,19 +18,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # 1) .yaml を検出したら失敗（.yml へ統一）
+  # .yaml が混ざっていたら失敗（.yml に統一）
   check-filenames:
     name: Enforce .yml (no .yaml allowed)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-
       - name: Fail if any .yaml files exist under .github/workflows
         shell: bash
         run: |
           set -eo pipefail
           mapfile -t yamls < <(find .github/workflows -type f -name "*.yaml" | sort || true)
-
           if (( ${#yamls[@]} > 0 )); then
             echo "::group::Found .yaml files that must be renamed to .yml"
             for file in "${yamls[@]}"; do
@@ -37,43 +40,34 @@ jobs:
             echo "  git mv .github/workflows/workflow.yaml .github/workflows/workflow.yml"
             exit 1
           fi
-
           echo "✅ All good: only .yml files are present."
 
-  # 2) GitHub Actions 専用 lint
+  # GitHub Actions ワークフロー専用の静的解析
   actionlint:
     name: actionlint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     needs: check-filenames
     steps:
-      - uses: actions/checkout@v4
-      - name: Run actionlint via reviewdog
-        uses: reviewdog/action-actionlint@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-check
-          level: error
-          filter_mode: file
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  # 3) YAML 構文/スタイル lint（.yml のみ対象）
+      - name: Install actionlint
+        run: bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) latest /usr/local/bin
+
+      - name: Running actionlint
+        run: actionlint .github/workflows/*.yml
+
+  # YAML 構文/スタイルのlint（設定ファイルも一緒にチェック）
   yamllint:
-    name: yamllint (workflows)
-    runs-on: ubuntu-latest
+    name: yamllint (workflows & config)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     needs: check-filenames
     steps:
-      - uses: actions/checkout@v4
-      - name: Install yamllint
-        run: python3 -m pip install --user yamllint
-      - name: Run yamllint for .yml files only
-        shell: bash
-        run: |
-          set -eo pipefail
-          shopt -s nullglob
-          files=(.github/workflows/*.yml)
-          if (( ${#files[@]} == 0 )); then
-            echo "No .yml files under .github/workflows."
-            exit 0
-          fi
-          # -c で .yamllint を使う。警告で失敗させたくない場合は -s を外す
-          python3 -m yamllint -f github -c .yamllint -s "${files[@]}"
+      - name: Checkout
+        uses: actions/checkout@v4
 
+      # ubuntu-24.04 には yamllint が入っています（なければ apt/pip で導入してください）
+      - name: Running yamllint
+        run: yamllint -c config/yamllint_config.yml .github/workflows/*.yml config/*.yml
