@@ -74,4 +74,6 @@ jobs:
             echo "No .yml files under .github/workflows."
             exit 0
           fi
-          python3 -m yamllint -f github -s "${files[@]}"
+          # -c で .yamllint を使う。警告で失敗させたくない場合は -s を外す
+          python3 -m yamllint -f github -c .yamllint -s "${files[@]}"
+

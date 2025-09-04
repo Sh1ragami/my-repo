@@ -1,0 +1,18 @@
+extends: default
+
+rules:
+  # GitHub Actions では先頭の '---' は通常書かない
+  document-start: disable
+
+  # 'on:' などのキー名での誤検知を避ける
+  truthy:
+    check-keys: false
+    allowed-values: ['true', 'false']  # 値としての真偽は true/false を推奨
+
+  # 長い行が出やすいので少し緩和
+  line-length:
+    max: 140
+    allow-non-breakable-words: true
+
+  # 末尾改行は推奨（そのまま維持）
+  new-line-at-end-of-file: enable
