@@ -1,7 +1,9 @@
 name: GitHub Actions Workflow Linter
 
 on:
-  pull_request:
+  pull_request_target:
+    # paths:
+    #   - ".github/workflows/**"
 
 permissions:
   contents: read
@@ -17,8 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout (pinned)
-        uses: actions/checkout@PINNED_SHA
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
@@ -30,7 +32,7 @@ jobs:
           mapfile -t ymls < <(find .github/workflows -type f -name "*.yml" | sort || true)
           if (( ${#ymls[@]} > 0 )); then
             for file in "${ymls[@]}"; do
-              printf '::warning file=%s,title=Invalid Extension::The file "%s" should be renamed to ".yaml".\n' "$file" "$file"
+              printf '::warning file=%s,title=Invalid Extension::The file \"%s\" should be renamed to \".yaml\".\n' "$file" "$file"
             done
           else
             echo "All good: only .yaml files are present."
@@ -41,8 +43,9 @@ jobs:
         run: |
           sudo apt-get -qq update
           sudo apt-get -y -qq install shellcheck
+
       - name: Run actionlint
-        uses: reviewdog/action-actionlint@PINNED_SHA
+        uses: reviewdog/action-actionlint@v1
         env:
           SHELLCHECK_OPTS: -S error
         with:
@@ -55,7 +58,7 @@ jobs:
           actionlint_flags: ./.github/workflows
 
       - name: Run ghalint
-        uses: koki-develop/github-actions-lint/ghalint@PINNED_SHA
+        uses: koki-develop/github-actions-lint/ghalint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-check
@@ -63,7 +66,7 @@ jobs:
           level: error
 
       - name: Run zizmor
-        uses: koki-develop/github-actions-lint/zizmor@PINNED_SHA
+        uses: koki-develop/github-actions-lint/zizmor@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-check
