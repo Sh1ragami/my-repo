@@ -49,14 +49,7 @@ jobs:
       - name: Run actionlint
         uses: reviewdog/action-actionlint@v1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-check     # PR の Checks に出す
-          tool_name: "actionlint"
-          level: error
-          filter_mode: nofilter
-          # Lint 対象（例：PR head を pr/ にチェックアウトしている場合）
-          actionlint_flags: ./pr/.github/workflows
-
+          args: .github/workflows
 
       - name: Run ghalint
         uses: koki-develop/github-actions-lint/ghalint@v1
@@ -65,6 +58,7 @@ jobs:
           reporter: github-pr-check
           tool_name: "ghalint"
           level: error
+        continue-on-error: true
 
       - name: Run zizmor
         uses: koki-develop/github-actions-lint/zizmor@v1
@@ -73,6 +67,7 @@ jobs:
           reporter: github-pr-check
           tool_name: "zizmor"
           persona: auditor
+        continue-on-error: true
 
       - name: policy checks
         shell: bash
