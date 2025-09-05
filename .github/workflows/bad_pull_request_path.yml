@@ -1,0 +1,11 @@
+name: Bad PR path key
+on:  # yamllint disable-line rule:truthy
+  pull_request:
+    # ↓ 間違い（正しくは paths）
+    path: ['go/**/*.go']
+
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "will fail by actionlint"

@@ -1,0 +1,92 @@
+name: "GitHub Actions Workflow Lint"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+  checks: write
+
+concurrency:
+  group: workflows-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workflow-lint:
+    name: Lint GitHub Workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Harden runner egress
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y shellcheck
+          curl -sSfL https://raw.githubusercontent.com/reviewdog/reviewdog/master/install.sh | sh -s -- -b $HOME/bin
+
+      - name: Run actionlint
+        run: |
+          actionlint .github/workflows \
+            | $HOME/bin/reviewdog -efm="%f:%l:%c: %m" \
+              -name="actionlint" \
+              -reporter=github-pr-check \
+              -level=error
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run ghalint
+        run: |
+          ghalint run .github/workflows \
+            | $HOME/bin/reviewdog -efm="%f:%l:%c: %m" \
+              -name="ghalint" \
+              -reporter=github-pr-check \
+              -level=error
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Run zizmor
+        run: |
+          zizmor .github/workflows \
+            | $HOME/bin/reviewdog -efm="%f:%l:%c: %m" \
+              -name="zizmor" \
+              -reporter=github-pr-check \
+              -level=warning
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Custom policy checks
+        run: |
+          echo "::group::Policy checks"
+          exitcode=0
+          for wf in .github/workflows/*.yml .github/workflows/*.yaml; do
+            if grep -Eiq 'password|secret|token' "$wf"; then
+              echo "$wf:1:1: Potential secret-like string found (use \${{ secrets.* }})"
+              exitcode=1
+            fi
+            if grep -Eq 'uses:.*@(?:main|master)\b' "$wf"; then
+              echo "$wf:1:1: Unpinned action ref (@main/@master) found"
+              exitcode=1
+            fi
+          done | $HOME/bin/reviewdog -efm="%f:%l:%c: %m" \
+                  -name="policy" \
+                  -reporter=github-pr-check \
+                  -level=warning
+          echo "::endgroup::"
+          exit $exitcode
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}

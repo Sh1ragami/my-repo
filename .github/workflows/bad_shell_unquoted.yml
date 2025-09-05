@@ -1,0 +1,14 @@
+name: Bad shell unquoted
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths:
+      - ".github/workflows/*"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      MESSAGE: "* glob and space test *"
+    steps:
+      # ↓ MESSAGE を未クォートで使用（SC2086）
+      - run: echo $MESSAGE
