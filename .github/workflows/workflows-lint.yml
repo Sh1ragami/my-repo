@@ -31,59 +31,62 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Check for .yml files
-        shell: bash
+      - name: Install tools
         run: |
-          echo "::group::Scan '.yml' in .github/workflows"
-          set -eo pipefail
-          mapfile -t ymls < <(find .github/workflows -type f -name "*.yml" | sort || true)
-          if (( ${#ymls[@]} > 0 )); then
-            for file in "${ymls[@]}"; do
-              printf '::warning file=%s,title=Invalid Extension::The file "%s" should be renamed to ".yaml".\n' "$file" "$file"
-            done
-          else
-            echo "All good: only .yaml files are present."
-          fi
-          echo "::endgroup::"
+          sudo apt-get update -qq
+          sudo apt-get install -y shellcheck
+          curl -sSfL https://raw.githubusercontent.com/reviewdog/reviewdog/master/install.sh | sh -s -- -b $HOME/bin
 
       - name: Run actionlint
-        uses: reviewdog/action-actionlint@v1
-        with:
-          args: .github/workflows
+        run: |
+          actionlint .github/workflows \
+            | $HOME/bin/reviewdog -efm="%f:%l:%c: %m" \
+              -name="actionlint" \
+              -reporter=github-pr-check \
+              -level=error
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run ghalint
-        uses: koki-develop/github-actions-lint/ghalint@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-check
-          tool_name: "ghalint"
-          level: error
+        run: |
+          ghalint run .github/workflows \
+            | $HOME/bin/reviewdog -efm="%f:%l:%c: %m" \
+              -name="ghalint" \
+              -reporter=github-pr-check \
+              -level=error
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
       - name: Run zizmor
-        uses: koki-develop/github-actions-lint/zizmor@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-check
-          tool_name: "zizmor"
-          persona: auditor
+        run: |
+          zizmor .github/workflows \
+            | $HOME/bin/reviewdog -efm="%f:%l:%c: %m" \
+              -name="zizmor" \
+              -reporter=github-pr-check \
+              -level=warning
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
-      - name: policy checks
-        shell: bash
+      - name: Custom policy checks
         run: |
           echo "::group::Policy checks"
           exitcode=0
-          shopt -s nullglob
           for wf in .github/workflows/*.yml .github/workflows/*.yaml; do
-            echo "Checking $wf"
             if grep -Eiq 'password|secret|token' "$wf"; then
-              echo "⚠️  Potential secret-like string in $wf (use \${{ secrets.* }})"
-            fi
-            if grep -Eq 'uses:.*@(?:main|master)\b' "$wf"; then
-              echo "❌  Unpinned action ref (@main/@master) found in $wf"
+              echo "$wf:1:1: Potential secret-like string found (use \${{ secrets.* }})"
               exitcode=1
             fi
-          done
+            if grep -Eq 'uses:.*@(?:main|master)\b' "$wf"; then
+              echo "$wf:1:1: Unpinned action ref (@main/@master) found"
+              exitcode=1
+            fi
+          done | $HOME/bin/reviewdog -efm="%f:%l:%c: %m" \
+                  -name="policy" \
+                  -reporter=github-pr-check \
+                  -level=warning
           echo "::endgroup::"
           exit $exitcode
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
