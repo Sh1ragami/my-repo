@@ -47,9 +47,16 @@ jobs:
           echo "::endgroup::"
 
       - name: Run actionlint
-        uses: rhysd/actionlint@v1
+        uses: reviewdog/action-actionlint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-check     # PR の Checks に出す
+          tool_name: "actionlint"
+          level: error
+          filter_mode: nofilter
+          # Lint 対象（例：PR head を pr/ にチェックアウトしている場合）
+          actionlint_flags: ./pr/.github/workflows
+
 
       - name: Run ghalint
         uses: koki-develop/github-actions-lint/ghalint@v1
