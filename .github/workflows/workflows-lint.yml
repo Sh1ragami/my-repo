@@ -2,8 +2,8 @@ name: GitHub Actions Workflow Linter
 
 on:
   pull_request_target:
-    # paths:
-    #   - ".github/workflows/**"
+    paths:
+      - ".github/workflows/*"
 
 permissions:
   contents: read
@@ -33,6 +33,84 @@ jobs:
           if (( ${#ymls[@]} > 0 )); then
             for file in "${ymls[@]}"; do
               printf '::warning file=%s,title=Invalid Extension::The file \"%s\" should be renamed to \".yaml\".\n' "$file" "$file"
+            done
+          else
+            echo "All good: only .yaml files are present."
+          fi
+          echo "::endgroup::"
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -y -qq install shellcheck
+
+      - name: Run actionlint
+        uses: reviewdog/action-actionlint@v1
+        env:
+          SHELLCHECK_OPTS: -S error
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-check
+          tool_name: "actionlint"
+          level: error
+          filter_mode: nofilter
+          fail_level: error
+          actionlint_flags: ./.github/workflows
+
+      - name: Run ghalint
+        uses: koki-develop/github-actions-lint/ghalint@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-check
+          tool_name: "ghalint"
+          level: error
+
+      - name: Run zizmor
+        uses: koki-develop/github-actions-lint/zizmor@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-check
+          tool_name: "zizmor"
+          persona: auditor
+name: GitHub Actions Workflow Linter
+
+on:
+  pull_request_target:
+    paths:
+      - ".github/workflows/**"   # 再帰
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write          # reviewdog系のPRコメント/チェック用
+
+concurrency:
+  group: workflows-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workflow-lint:
+    name: Lint GitHub Workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # pull_request_target では PRコードを直接実行しない（ベースのSHAをチェックアウト）
+      - name: Checkout base branch (safe)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check for .yml files
+        shell: bash
+        run: |
+          echo "::group::Scan '.yml' in .github/workflows"
+          set -eo pipefail
+          mapfile -t ymls < <(find .github/workflows -type f -name "*.yml" | sort || true)
+          if (( ${#ymls[@]} > 0 )); then
+            for file in "${ymls[@]}"; do
+              printf '::warning file=%s,title=Invalid Extension::The file "%s" should be renamed to ".yaml".\n' "$file" "$file"
             done
           else
             echo "All good: only .yaml files are present."
